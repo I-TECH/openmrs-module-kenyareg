@@ -14,25 +14,34 @@
 
 package org.openmrs.module.kenyareg.api;
 
-import ke.go.moh.oec.Person;
-import ke.go.moh.oec.PersonIdentifier;
-import ke.go.moh.oec.PersonRequest;
-import ke.go.moh.oec.lib.Mediator;
+import java.util.Collections;
+import java.util.List;
+
 import org.go2itech.oecui.api.RequestDispatcher;
 import org.go2itech.oecui.data.RequestResult;
 import org.go2itech.oecui.data.RequestResultPair;
 import org.openmrs.Patient;
-import org.openmrs.PersonName;
+import org.openmrs.PatientIdentifier;
+import org.openmrs.PatientIdentifierType;
 import org.openmrs.api.PatientService;
 import org.openmrs.api.PersonService;
+import org.openmrs.api.context.Context;
+import org.openmrs.api.impl.BaseOpenmrsService;
+import org.openmrs.module.idgen.service.IdentifierSourceService;
+import org.openmrs.module.kenyaemr.api.KenyaEmrService;
+import org.openmrs.module.kenyaemr.metadata.CommonMetadata;
+import org.openmrs.module.metadatadeploy.MetadataUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import ke.go.moh.oec.Person;
+import ke.go.moh.oec.PersonIdentifier;
+import ke.go.moh.oec.PersonRequest;
+import ke.go.moh.oec.lib.Mediator;
 
 @Service("registryService")
-public class RegistryServiceImpl implements RegistryService {
+public class RegistryServiceImpl extends BaseOpenmrsService implements RegistryService {
 
 	@Autowired(required = true)
 	@Qualifier("patientService")
@@ -41,6 +50,13 @@ public class RegistryServiceImpl implements RegistryService {
 	@Autowired(required = true)
 	@Qualifier("personService")
 	PersonService personService;
+
+	@Autowired(required = true)
+	@Qualifier("personMergeService")
+	PersonMergeService mergeService;
+
+	@Autowired
+	private KenyaEmrService emrService;
 
 	@Override
 	public RequestResultPair findPerson(int server, Person person) {
@@ -68,7 +84,6 @@ public class RegistryServiceImpl implements RegistryService {
 		} else {
 			patient = new Patient(merged);
 		}
-		mergePersonIdentifiers(fromOmrs, fromMpi);
 		return patientService.savePatient(patient);
 	}
 
@@ -77,30 +92,28 @@ public class RegistryServiceImpl implements RegistryService {
 			fromOmrs = new org.openmrs.Person();
 			fromOmrs.setUuid(fromMpi.getPersonGuid());
 		}
-		fromOmrs.setGender(fromMpi.getSex() == null ? "M" : fromMpi.getSex().toString());
-		fromOmrs.setBirthdate(fromMpi.getBirthdate());
-		fromOmrs.setDeathDate(fromMpi.getDeathdate());
-
-		PersonName personName = fromOmrs.getPersonName();
-		if (personName == null) {
-			personName = new PersonName();
-			personName.setPerson(fromOmrs);
+		mergeService.mergePerson(fromOmrs, fromMpi);
+		Patient patient = null;
+		if (fromOmrs.isPatient()) {
+			patient = (Patient)fromOmrs;
+		} else {
+			patient = new Patient(fromOmrs);
 		}
-		personName.setGivenName(fromMpi.getFirstName());
-		personName.setMiddleName(fromMpi.getMiddleName());
-		personName.setFamilyName(fromMpi.getLastName());
-		fromOmrs.addName(personName);
+		List<PersonIdentifier> personIdentifiers = fromMpi.getPersonIdentifierList();
+		if (personIdentifiers == null) {
+			personIdentifiers = Collections.emptyList();
+		}
+		mergeService.mergePatientIdentifiers(patient, personIdentifiers, emrService.getDefaultLocation());;
+		PatientIdentifierType openmrsIdType = MetadataUtils.existing(PatientIdentifierType.class, CommonMetadata._PatientIdentifierType.OPENMRS_ID);
+		PatientIdentifier openmrsId = patient.getPatientIdentifier(openmrsIdType);
 
-		return fromOmrs;
-	}
+		if (openmrsId == null) {
+			String generated = Context.getService(IdentifierSourceService.class).generateIdentifier(openmrsIdType, "Registration");
+			openmrsId = new PatientIdentifier(generated, openmrsIdType, emrService.getDefaultLocation());
+			patient.addIdentifier(openmrsId);
 
-	private org.openmrs.Person mergePersonIdentifiers(org.openmrs.Person fromOmrs, Person fromMpi) {
-		List<PersonIdentifier> mpiIds = fromMpi.getPersonIdentifierList();
-		if (mpiIds != null) {
-			for (PersonIdentifier mpiId : mpiIds) {
-				if (mpiId.getIdentifierType().toString().equalsIgnoreCase("")) {
-					//assign patient ids here
-				}
+			if (!patient.getPatientIdentifier().isPreferred()) {
+				openmrsId.setPreferred(true);
 			}
 		}
 		return fromOmrs;

@@ -8,16 +8,8 @@
 
 <div class="ke-page-sidebar">
     ${ui.includeFragment("kenyaui", "widget/panelMenu", [heading: "Back", items: menuItems])}
-
-    ${ui.includeFragment("kenyareg", "basicSearch")}
 </div>
 
 <div class="ke-page-content">
-    <div>${ui.includeFragment("kenyareg", "status")}</div>
-    <div class="results">
-        ${ui.includeFragment("kenyareg", "multipleResults")}
-    </div>
-    <div class="detail">
-        ${ui.includeFragment("kenyareg", "individualResult")}
-    </div>
+    ${ui.includeFragment("kenyareg", "personEditor", [lpiUid: lpiUid, mpiUid: mpiUid])}
 </div>

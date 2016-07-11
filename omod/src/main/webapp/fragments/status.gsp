@@ -2,7 +2,7 @@
     ui.decorateWith("kenyaui", "panel", [heading: "Status"])
 %>
 
-Status: [Use Okoth Nicodemus for testing]
+Status: [Use Kamau Rose for testing]
 <div id="status">
 
 </div>

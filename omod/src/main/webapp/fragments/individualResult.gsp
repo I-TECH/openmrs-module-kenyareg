@@ -34,7 +34,7 @@
         </tr>
         <tr>
             <td>
-                <table id="id-table" class="details-table" style="table-layout: fixed">
+                <table id="identifier-table" class="details-table" style="table-layout: fixed">
                     <thead>
                     <tr>
                         <th colspan="2" class="centered">Unique Identifiers</th>

@@ -26,9 +26,12 @@ import org.openmrs.ui.framework.annotation.MethodParam;
 import org.openmrs.ui.framework.annotation.SpringBean;
 import org.openmrs.ui.framework.session.Session;
 import org.springframework.validation.Errors;
+import org.springframework.validation.ValidationUtils;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class BasicSearchFragmentController {
 
@@ -59,22 +62,28 @@ public class BasicSearchFragmentController {
 
 	public RequestResultPair search(@MethodParam("newBasicSearchForm") @BindParams BasicSearchForm form,
 	                                @SpringBean("registryService") RegistryService registryService,
+	                                @RequestParam("server")Integer serverId,
 	                                Session session, UiUtils ui) {
 		ui.validate(form, form, null);
 
 		setDisplayAttributes(form.getServer(), session);
 
 		Person query = form.getPerson();
-        RequestResultPair resultPair = registryService.findPerson(Server.MPI_LPI, query);
+        RequestResultPair resultPair = registryService.findPerson(serverId, query);
 
-		session.setAttribute("lpiResult", resultPair.getLpiResult());
-		session.setAttribute("mpiResult", resultPair.getMpiResult());
-
-		RequestResult lpi = session.getAttribute("lpiResult", RequestResult.class);
+		if (serverId == Server.LPI) {
+			session.setAttribute("lpiResult", resultPair.getLpiResult());
+		}
+		if (serverId == Server.MPI) {
+			session.setAttribute("mpiResult", resultPair.getMpiResult());
+		}
+		if (serverId == Server.MPI_LPI) {
+			session.setAttribute("lpiResult", resultPair.getLpiResult());
+			session.setAttribute("mpiResult", resultPair.getMpiResult());
+		}
 
 		return resultPair;
 	}
-
 
 	public Integer accept(@RequestParam(value = "uuid", required = true) String uuid,
 	                      @SpringBean("registryService") RegistryService registryService,
@@ -132,7 +141,7 @@ public class BasicSearchFragmentController {
 
 		@Override
 		public void validate(Object o, Errors errors) {
-
+			//require(errors, "firstName");
 		}
 
 		public Person getPerson() {

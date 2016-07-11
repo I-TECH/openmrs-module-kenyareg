@@ -17,8 +17,9 @@ package org.openmrs.module.kenyareg.api;
 import ke.go.moh.oec.Person;
 import org.go2itech.oecui.data.RequestResultPair;
 import org.openmrs.Patient;
+import org.openmrs.api.OpenmrsService;
 
-public interface RegistryService {
+public interface RegistryService extends OpenmrsService {
 
 	public RequestResultPair findPerson(int server, Person person);
 

@@ -3,8 +3,8 @@ jq(function () {
 	/**
 	 * Pre-fill basic search form with test data.
 	 */
-	jq('#surname').val("Okoth");
-	jq('#firstName').val("Nicodemus");
+	jq('#surname').val("Kamau");
+	jq('#firstName').val("Rose");
 
 	/**
 	 * The search result after sending a query to the MPI, LPI or both.
@@ -12,9 +12,19 @@ jq(function () {
 	var requestResult = null;
 
 	/**
-	 * The matching person selected by the user, if any.
+	 * The matching person selected by the user from the LPI, if any.
 	 */
-	var selectedMatch = null;
+	var lpiMatch = null;
+
+	/**
+	 * The matching person selected by the user from the MPI, if any.
+	 */
+	var mpiMatch = null;
+
+	/**
+	 * Indicates whether the person index should be contacted
+	 */
+	var skipPersonIndex = false;
 
 	/**
 	 * Sets up the basic search form to be submitted via AJAX.
@@ -23,46 +33,76 @@ jq(function () {
 		onSuccess: function (data) {
 			requestResult = data;
 			if (!data.lpiResult.successful && !data.mpiResult.successful) {
-				jq('#status').html("Neither the LPI nor the MPI could be contacted. Retry?");
+				kenyaui.openConfirmDialog(
+					{
+						"message": "Neither the LPI nor the MPI could be contacted. Retry?",
+						"okLabel": "Yes",
+						"cancelLabel": "No",
+						"okCallback": function(){
+							jq("#basic-search-form").submit();
+						}
+					}
+				);
 			} else {
-				if (!data.lpiResult.successful && data.mpiResult.successful) {
-					jq('#status').html("The LPI could not be contacted. Retry?");
-				} else if (data.lpiResult.successful && !data.mpiResult.successful) {
-					jq('#status').html("The MPI could not be contacted. Retry?");
-				} else {
-					jq('#status').html("Both the LPI and the MPI were contacted. render results.");
-					showResults();
-					showDetails(0)
+				if (data.lpiResult.successful) {
+					showResultBySource('mpi');
+					showDetails(0, 'mpi')
+				} else if (data.mpiResult.successful) {
+					showResultBySource('lpi');
+					showDetails(0, 'lpi');
 				}
 			}
 		}
 	});
 
-	jq('#results-table tbody').on('click', 'tr', function (e) {
-		showDetails(this.rowIndex - 1);
+	jq('#lpi-results-table tbody').on('click', 'tr', function (e) {
+		showDetails(this.rowIndex - 1, 'lpi');
+	});
+
+	jq('#mpi-results-table tbody').on('click', 'tr', function (e) {
+		showDetails(this.rowIndex - 1, 'mpi');
 	});
 
 	function showResults() {
-		var list = requestResult.lpiResult;
-		jq('#results-table > tbody').html("");
+		showResultBySource('lpi');
+		showResultBySource('mpi');
+	}
+
+	function showResultBySource(source) {
+		var list;
+		jq("div.results .ke-panel-heading").html(source.toUpperCase() + " Results")
+		if (source == 'lpi') {
+			list = requestResult.lpiResult;
+		} else if (source == 'mpi') {
+			list = requestResult.mpiResult;
+		}
+		jq('#person-index-results-table > tbody').html("");
 		if (list.data.length == 0) {
 			showEmpty();
 		} else {
 			for (var i = 0; i < list.data.length; i++) {
-				showPerson(i);
+				showPerson(i, source);
 			}
 		}
 	}
 
 	function showEmpty() {
-		jq('#results-table').append('<tr>' +
-		'<td colspan="6">Nothing to show</td>' +
-		'</tr>');
+		var id = '#person-index-results-table';
+		jq(id).append(
+			'<tr>' +
+				'<td colspan="6">Nothing to show</td>' +
+			'</tr>');
 	}
 
-	function showPerson(i) {
-		var person = requestResult.lpiResult.data[i];
-		jq('#results-table').append('<tr>' +
+	function showPerson(i, source) {
+		var person;
+		var id = '#person-index-results-table';
+		if (source == 'lpi') {
+			person = requestResult.lpiResult.data[i];
+		} else if (source == 'mpi') {
+			person = requestResult.mpiResult.data[i];
+		}
+		jq(id).append('<tr>' +
 		'<td>' + replaceNull(person.matchScore) + '</td>' +
 		'<td>' + replaceNull(person.firstName) + '</td>' +
 		'<td>' + replaceNull(person.middleName) + '</td>' +
@@ -76,32 +116,39 @@ jq(function () {
 		return value ? value : "";
 	}
 
-	function showDetails(i) {
-		selectedMatch = requestResult.lpiResult.data[i];
-		showMatchScore(selectedMatch)
-		showIdentifierDetails(selectedMatch);
-		showBasicDetails(selectedMatch);
-		showStatusDetails(selectedMatch);
-		showParentDetails(selectedMatch);
+	function showDetails(i, source) {
+		var selected;
+		if (source == 'lpi') {
+			lpiMatch = requestResult.lpiResult.data[i];
+			selected = lpiMatch;
+		} else if (source == 'mpi') {
+			mpiMatch = requestResult.mpiResult.data[i];
+			selected = mpiMatch;
+		}
+		showMatchScore(selected)
+		showIdentifierDetails(selected);
+		showBasicDetails(selected);
+		showStatusDetails(selected);
+		showParentDetails(selected);
 	}
 
-	function showMatchScore(person) {
+	function showMatchScore(person, source) {
 		jq('#score').html(replaceNull(person.matchScore));
 	}
 
 	function showIdentifierDetails(person) {
-		jq('#id-table > tbody').html("");
+		jq('#identifier-table > tbody').html("");
 		var personIdList = person.personIdentifierList;
 		if (personIdList) {
 			for (var j = 0; j < personIdList.length; j++) {
 				var personId = personIdList[j];
-				jq('#id-table').append('<tr>' +
+				jq(id).append('<tr>' +
 				'<td class="field-label">' + replaceNull(formatIdentifierType(personId.identifierType)) + '</td>' +
 				'<td>' + replaceNull(personId.identifier) + '</td>' +
 				'</tr>');
 			}
 		} else {
-			jq('#id-table').append('<tr><td></td></tr>');
+			jq('#identifier-table').append('<tr><td></td></tr>');
 		}
 	}
 
@@ -192,6 +239,7 @@ jq(function () {
 		return formatted;
 	}
 
+	//selectedMatch was renamed/split to lpiMatch and mpiMatch
 	function extractNupi(person) {
 		var nupi = null;
 		if (selectedMatch.personIdentifierList) {
@@ -208,6 +256,59 @@ jq(function () {
 	}
 
 	jq('#accept-button').click(function () {
+		if (lpiMatch && !mpiMatch && requestResult.mpiResult.successful) {
+			showResultBySource('mpi');
+			showDetails(0, 'mpi');
+			jq("html, body").animate({ scrollTop: 0 }, "slow");
+		} else if(mpiMatch && !lpiMatch && requestResult.lpiResult.successful){
+			showResultBySource('lpi');
+			showDetails(0, 'lpi');
+			jq("html, body").animate({ scrollTop: 0 }, "slow");
+		} else if (!lpiMatch && !requestResult.lpiResult.successful && skipPersonIndex) {
+			//show retry dialog
+			kenyaui.openConfirmDialog(
+				{
+					"message": "The LPI could not be contacted. Retry?",
+					"okLabel": "Yes",
+					"cancelLabel": "No",
+					"okCallback": function(){
+						jq("input[name='server']").val(2)
+						jq("#basic-search-form").submit();
+					},
+					"cancelCallback": function() {
+						skipPersonIndex = true;
+						jq("#accept-button").click();
+					}
+				}
+			);
+		} else if (!mpiMatch && !requestResult.mpiResult.successful && skipPersonIndex) {
+			//show retry dialog
+			kenyaui.openConfirmDialog(
+				{
+					"message": "The MPI could not be contacted. Retry?",
+					"okLabel": "Yes",
+					"cancelLabel": "No",
+					"okCallback": function(){
+						jq("input[name='server']").val(3)
+						jq("#basic-search-form").submit();
+					},
+					"cancelCallback": function() {
+						skipPersonIndex = true;
+						jq("#accept-button").click();
+					}
+				}
+			);
+		} else if ((lpiMatch && mpiMatch) || skipPersonIndex) {
+			ui.navigate('kenyareg', 'merge', {lpiUid: lpiMatch.personGuid, mpiUid: mpiMatch.personGuid});
+		}
+	})
+
+	/**
+	 * This is the original implementation. It directly extracts the NUPI uses it to retrieve the patient from
+	 * KenyaEMR
+	 */
+
+	/*jq('#accept-button').click(function () {
 		var nupi = extractNupi(selectedMatch);
 		jq.getJSON('/' + OPENMRS_CONTEXT_PATH + '/kenyareg/basicSearch/accept.action', {uuid: nupi})
 			.success(function (data) {
@@ -221,5 +322,5 @@ jq(function () {
 			.error(function (xhr, status, err) {
 				alert(err);
 			})
-	})
+	})*/
 });
