@@ -34,7 +34,17 @@ jq(function () {
 	/**
 	 * Sets up the basic search form to be submitted via AJAX.
 	 */
-	kenyaui.setupAjaxPost('basic-search-form', {
+	var skipPersonIndex = false;
+
+	/*
+	 * Indicates current source being viewed
+	 */
+	var source = null;
+
+	/**
+	 * Sets up the basic/advanced search form to be submitted via AJAX.
+	 */
+	kenyaui.setupAjaxPost('search-form', {
 		onSuccess: function (data) {
 			requestResult = data;
 			if (!lpiMatch && data.lpiResult.successful) {
@@ -63,6 +73,12 @@ jq(function () {
 			}
 		}
 	});
+
+	jq("#search-form").on("submit", function (e) {
+		e.preventDefault();
+		lpiMatch = null;
+		mpiMatch = null;
+	})
 
 	jq('#person-index-results-table').on('click', 'tr', function (e) {
 		showDetails(this.rowIndex - 1, source);

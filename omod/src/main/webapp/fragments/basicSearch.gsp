@@ -54,7 +54,7 @@
             ]
 %>
 
-<form id="basic-search-form" method="post" action="${ui.actionLink("kenyareg", "basicSearch", "search")}">
+<form id="search-form" method="post" action="${ui.actionLink("kenyareg", "basicSearch", "search")}">
     <div class="ke-form-globalerrors" style="display: none"></div>
     <fieldset>
         <% fields.each { %>
