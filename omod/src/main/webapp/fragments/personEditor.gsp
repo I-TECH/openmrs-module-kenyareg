@@ -3,9 +3,9 @@
 
     ui.includeCss("kenyareg", "kenyareg.css")
 
-    def initializeFields = { fieldCollection ->
+    def initializeFields = { fieldCollection, mergedValues ->
         fieldCollection.each { field ->
-            def property = mergedProperties.find { key, value ->
+            def property = mergedValues.find { key, value ->
                 key == field.id
             }
             if (property) {
@@ -18,9 +18,9 @@
         }
     }
 
-    def removeFieldsInConflict = { fieldCollection ->
+    def removeFieldsInConflict = { fieldCollection, valuesInConflict ->
         def mergedFields = fieldCollection.findAll { field ->
-            def isInConflict = conflictedProperties.find { key, value ->
+            def isInConflict = valuesInConflict.find { key, value ->
                 return field.id == key
             }
             return !isInConflict
@@ -61,10 +61,12 @@
         return formatted;
     }
 
-    def clinicIdentifier = [ formFieldName: "identifier_cccLocalId", label : "Clinic ID", class : java.lang.String, id : "identifiers.cccLocalId" ]
-    def phoneNumber = [ formFieldName: "identifier_telNo", label : "Phone Number", class : java.lang.String, id : "identifiers.cccLocalId" ]
-    def parentPhoneNumber = [ formFieldName: "identifier_parentTelNo", label : "Parent Phone Number", class : java.lang.String, id : "identifiers.cccLocalId" ]
-    def uniquePersonNumber = [ formFieldName: "identifier_cccUniqueId", label : "UPN", class : java.lang.String, id : "identifiers.cccUniqueId" ]
+    def identifierFieldDefinitions = [
+        [ formFieldName: "cccLocalId", label : "Clinic ID", class : java.lang.String, id : "cccLocalId" ],
+        [ formFieldName: "telNo", label : "Phone Number", class : java.lang.String, id : "telNo" ],
+        [ formFieldName: "parentTelNo", label : "Parent Phone Number", class : java.lang.String, id : "parentTelNo" ],
+        [ formFieldName: "cccUniqueId", label : "UPN", class : java.lang.String, id : "cccUniqueId" ]
+    ]
 
     def nameFieldDefinitions = [
         [ formFieldName: "lastName", label : "Surname", class : java.lang.String, id : "lastName" ],
@@ -109,47 +111,55 @@
         [ formFieldName: "mothersLastName", label : "Mother's Last Name", class : java.lang.String, id : "mothersLastName" ]
     ]
 
-    initializeFields(nameFieldDefinitions)
-    initializeFields(otherDemoFieldDefinitions)
-    initializeFields(fatherFieldDefinitions)
-    initializeFields(motherFieldDefinitions)
-    
-    def mergedNameFields = removeFieldsInConflict(nameFieldDefinitions);
-    def mergedOtherDemoFields = removeFieldsInConflict(otherDemoFieldDefinitions);
-    def mergedFatherFields = removeFieldsInConflict(fatherFieldDefinitions);
-    def mergedMotherFields = removeFieldsInConflict(motherFieldDefinitions);
+    initializeFields(identifierFieldDefinitions, mergedIdentifiers)
+    initializeFields(nameFieldDefinitions, mergedProperties)
+    initializeFields(otherDemoFieldDefinitions, mergedProperties)
+    initializeFields(fatherFieldDefinitions, mergedProperties)
+    initializeFields(motherFieldDefinitions, mergedProperties)
 
+    def mergedIdentifierFields = removeFieldsInConflict(identifierFieldDefinitions, conflictingIdentifiers);
+    def mergedNameFields = removeFieldsInConflict(nameFieldDefinitions, conflictedProperties);
+    def mergedOtherDemoFields = removeFieldsInConflict(otherDemoFieldDefinitions, conflictedProperties);
+    def mergedFatherFields = removeFieldsInConflict(fatherFieldDefinitions, conflictedProperties);
+    def mergedMotherFields = removeFieldsInConflict(motherFieldDefinitions, conflictedProperties);
+
+    identifierFields = mergedIdentifierFields.each { it.formFieldName = "identifier_" + it.formFieldName }.collect { [it] }
     nameFields = [ mergedNameFields ]
     otherDemoFields = mergedOtherDemoFields.collect { [it] }
     parentFields = [ mergedFatherFields, mergedMotherFields ]
 
-    def conflictingFields = []
-    conflictedProperties.each { property, lpiMpiValue ->
-        def conflictedPair = []
-        def fieldDefinitions = nameFieldDefinitions + otherDemoFieldDefinitions + fatherFieldDefinitions + motherFieldDefinitions
-        def definition = fieldDefinitions.find { it.id == property }
-        if (definition) {
-            lpiMpiValue.each { source, value ->
-                def lpiMpi = [:]
-                definition.each { defKey, defValue ->
-                    lpiMpi.put(defKey, defValue)
+    def getConflictingFields = { fieldDefinitions, valuesInConflict ->
+        def conflictingFields = []
+        valuesInConflict.each { property, lpiMpiValue ->
+            def conflictedPair = []
+            def definition = fieldDefinitions.find { it.id == property }
+            if (definition) {
+                lpiMpiValue.each { source, value ->
+                    def lpiMpi = [:]
+                    definition.each { defKey, defValue ->
+                        lpiMpi.put(defKey, defValue)
+                    }
+                    lpiMpi.initialValue = value
+                    def resolveInputName = lpiMpi.formFieldName
+                    lpiMpi.formFieldName = "conflict-${source}-${lpiMpi.formFieldName}"
+                    lpiMpi.label += " (${source.toUpperCase()})" +
+                      "<input name=\'resolve-${resolveInputName}\' data-field-name=\'${lpiMpi.formFieldName}\' type=\'radio\' class=\'resolve\'>"
+                    conflictedPair.push(lpiMpi)
                 }
-                lpiMpi.initialValue = value
-                def resolveInputName = lpiMpi.formFieldName
-                lpiMpi.formFieldName = "conflict-${source}-${lpiMpi.formFieldName}"
-                lpiMpi.label += " (${source.toUpperCase()})" +
-                  "<input name=\'resolve-${resolveInputName}\' data-field-name=\'${lpiMpi.formFieldName}\' type=\'radio\' class=\'resolve\'>"
-                conflictedPair.push(lpiMpi)
+                conflictingFields.push(conflictedPair)
             }
-            conflictingFields.push(conflictedPair)
         }
+        return conflictingFields;
     }
+
+    propertiesInConflict = getConflictingFields(nameFieldDefinitions + otherDemoFieldDefinitions + fatherFieldDefinitions + motherFieldDefinitions, conflictedProperties);
+    identifiersInConflict = getConflictingFields(identifierFieldDefinitions, conflictingIdentifiers)
 
     def personGuid = "";
     if (mpiUid) { personGuid = mpiUid }
     else if (lpiUid) { personGui = mpiUid }
 %>
-<% if (!conflictingFields.empty || conflictingIdentifiers.size() > 0) { %>
+<% if (!propertiesInConflict.empty || !identifiersInConflict.empty) { %>
 <div>
     <p>NOTE: Some conflicts occurred while trying to merge MPI and LPI person details. Please resolve by selecting the preferred property</p>
 </div>
@@ -160,25 +170,18 @@
         <div class="ke-form-globalerrors" style="display: none"></div>
         <fieldset>
             <legend>Identifiers</legend>
-            <% if (!mergedIdentifiers.cccLocalId && !conflictingIdentifiers.cccLocalId) { %>
-                ${ui.includeFragment("kenyaui", "widget/labeledField", clinicIdentifier)}
+            <% identifierFields.each { %>
+                ${ui.includeFragment("kenyaui", "widget/rowOfFields", [fields: it])}
             <% } %>
-            <% if (!mergedIdentifiers.cccUniqueId && !conflictingIdentifiers.cccUniqueId) { %>
-                ${ui.includeFragment("kenyaui", "widget/labeledField", uniquePersonNumber)}
-            <% } %>
-            <% if (!mergedIdentifiers.telNo && !conflictingIdentifiers.telNo) { %>
-                ${ui.includeFragment("kenyaui", "widget/labeledField", phoneNumber)}
-            <% } %>
-            <% if (!mergedIdentifiers.parentTelNo && !conflictingIdentifiers.parentTelNo) { %>
-                ${ui.includeFragment("kenyaui", "widget/labeledField", parentPhoneNumber)}
-            <% } %>
-            <% mergedIdentifiers.each { idType, id -> 
-                def label = getFormattedIdentifierType(idType) %>
-                <p>
-                    ${label}: ${id}
-                    <input type="hidden" name="identifier_${idType}" value="${id}" >
-                </p>
-            <% } %>
+            <% mergedIdentifiers.each { idType, id ->
+                 if (idType.equals("nupi") || idType.equals("masterPatientRegistryId")) { 
+                   def label = getFormattedIdentifierType(idType) %>
+                   <p>
+                     ${label}: ${id}
+                     <input type="hidden" name="identifier_${idType}" value="${id}" >
+                   </p>
+            <%   }
+               } %>
         </fieldset>
         <fieldset>
             <legend>Demographics</legend>
@@ -195,24 +198,19 @@
                 ${ui.includeFragment("kenyaui", "widget/rowOfFields", [fields: it])}
             <% } %>
         </fieldset>
-        <% if (!conflictingFields.empty || conflictingIdentifiers.size() > 0) { %>
+        <% if (!propertiesInConflict.empty || !identifiersInConflict.empty) { %>
             <fieldset>
                 <legend>Conflicts</legend>
                 <table>
                     <tbody>
-                    <% conflictingIdentifiers.each { idType, conflictingPair ->
-                        def label = getFormattedIdentifierType(idType) %>
+                    <% identifiersInConflict.each { conflictingPair -> %>
                         <tr>
-                            <% conflictingPair.each { source, value -> %>
-                                <td>
-                                    ${label} (${source.toUpperCase()}): ${value}
-                                    <input type="hidden" name="conflict-${source}-identifier_${idType}" value="${value}">
-                                    <input name="${idType}" data-field-name="conflict-${source}-identifier_${idType}" type="radio" class="resolve">
-                                </td>
-                            <% } %>
+                        <% conflictingPair.each { field -> %>
+                            <td>${ui.includeFragment("kenyaui", "widget/labeledField", field)}</td>
+                        <% } %>
                         </tr>
                     <% } %>
-                    <% conflictingFields.each { conflictingPair -> %>
+                    <% propertiesInConflict.each { conflictingPair -> %>
                         <tr>
                         <% conflictingPair.each { field -> %>
                             <td>${ui.includeFragment("kenyaui", "widget/labeledField", field)}</td>
@@ -225,8 +223,8 @@
         <% } %>
     </div>
     <div class="ke-panel-footer">
-        <button id="save-button" class="button">Save</button>
-        <button id="cancel-button" class="button">Cancel</button>
+        <button id="save-button" class="button"><img src="${ui.resourceLink("kenyaui", "images/glyphs/ok.png")}"/> Save</button>
+        <button id="cancel-button" class="button"><img src="${ui.resourceLink("kenyaui", "images/glyphs/cancel.png")}"/> Cancel</button>
     </div>
 </form>
 <script>

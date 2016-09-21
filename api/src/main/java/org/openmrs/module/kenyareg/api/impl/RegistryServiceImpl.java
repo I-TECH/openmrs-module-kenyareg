@@ -13,6 +13,7 @@ package org.openmrs.module.kenyareg.api.impl;
 import ke.go.moh.oec.Person;
 import ke.go.moh.oec.PersonIdentifier;
 import ke.go.moh.oec.PersonRequest;
+import ke.go.moh.oec.PersonIdentifier.Type;
 import ke.go.moh.oec.lib.Mediator;
 import org.go2itech.oecui.api.RequestDispatcher;
 import org.go2itech.oecui.data.RequestResult;
@@ -40,6 +41,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 @Service("registryService")
 public class RegistryServiceImpl extends BaseOpenmrsService implements RegistryService {
@@ -79,25 +81,44 @@ public class RegistryServiceImpl extends BaseOpenmrsService implements RegistryS
 
     private void copyIdentifiersFromUiToIndex(Person fromUi, Person fromIndex) {
         List<PersonIdentifier> identifiersFromUi = fromUi.getPersonIdentifierList();
-        List<PersonIdentifier> identifiersFromIndex = fromIndex.getPersonIdentifierList();
-        if (identifiersFromIndex == null) {
-            identifiersFromIndex = new ArrayList<PersonIdentifier>();
+        if (fromIndex.getPersonIdentifierList() == null) {
+            fromIndex.setPersonIdentifierList(new ArrayList<PersonIdentifier>());
         }
         if (identifiersFromUi != null) {
             for (PersonIdentifier personIdentifierFromUi : identifiersFromUi) {
-                if (personIdentifierFromUi.getIdentifierType() != PersonIdentifier.Type.nupi) {
-                    PersonIdentifier existing = getIdentifierOfType(identifiersFromIndex, personIdentifierFromUi.getIdentifierType());
-                    if (existing == null) {
-                        identifiersFromIndex.add(personIdentifierFromUi);
-                    } else {
-                        existing.setIdentifier(personIdentifierFromUi.getIdentifier());
-                    }
+                PersonIdentifier existing = getIdentifierOfType(fromIndex.getPersonIdentifierList(), personIdentifierFromUi.getIdentifierType());
+                if (existing == null) {
+                	fromIndex.getPersonIdentifierList().add(personIdentifierFromUi);
+                } else {
+                    existing.setIdentifier(personIdentifierFromUi.getIdentifier());
                 }
             }
         }
     }
 
+    private void initialiseNupi(Person person) {
+        PersonIdentifier nupi = getIdentifierOfType(person.getPersonIdentifierList(), Type.nupi);
+        if (nupi == null) {
+            nupi = new PersonIdentifier();
+            nupi.setIdentifierType(Type.nupi);
+            nupi.setIdentifier(UUID.randomUUID().toString());
+            person.getPersonIdentifierList().add(nupi);
+        }
+    }
+
     private void copyPropertiesFromUiToIndex(Person fromUi, Person fromIndex) {
+        if (fromUi.getFirstName() != null) {
+            fromIndex.setFirstName(fromUi.getFirstName());
+        }
+        if (fromUi.getLastName() != null) {
+            fromIndex.setLastName(fromUi.getLastName());
+        }
+        if (fromUi.getMiddleName() != null) {
+            fromIndex.setMiddleName(fromUi.getMiddleName());
+        }
+        if (fromUi.getOtherName() != null) {
+            fromIndex.setOtherName(fromUi.getOtherName());
+        }
         if (fromUi.getMaritalStatus() != null) {
             fromIndex.setMaritalStatus(fromUi.getMaritalStatus());
         }
@@ -142,58 +163,39 @@ public class RegistryServiceImpl extends BaseOpenmrsService implements RegistryS
 
     @Override
     public Patient acceptPerson(Person fromUi, Person fromLpi, Person fromMpi) {
+        initialiseNupi(fromUi);
         Patient patient = null;
         boolean lpiMatched = fromLpi != null;
         boolean mpiMatched = fromMpi != null;
-        String personUuid = "";
+        String lpiNupi = "";
+        if (fromLpi != null) {
+            lpiNupi = getIdentifierOfType(fromLpi.getPersonIdentifierList(), Type.nupi) != null ?
+                    getIdentifierOfType(fromLpi.getPersonIdentifierList(), Type.nupi).getIdentifier() : "";
+        }
         if (!lpiMatched && !mpiMatched) {
             fromLpi = fromUi;
             fromMpi = fromUi;
         } else if (lpiMatched && !mpiMatched) {
             copyIdentifiersFromUiToIndex(fromUi, fromLpi);
             fromMpi = fromLpi;
-            personUuid = fromLpi.getPersonGuid();
         } else if (!lpiMatched && mpiMatched) {
             copyIdentifiersFromUiToIndex(fromUi, fromMpi);
             fromLpi = fromMpi;
-            personUuid = fromMpi.getPersonGuid();
         } else if (lpiMatched && mpiMatched) {
-            personUuid = fromLpi.getPersonGuid();
             copyIdentifiersFromUiToIndex(fromUi, fromLpi);
             copyIdentifiersFromUiToIndex(fromUi, fromMpi);
-            PersonIdentifier lpiNupi = getIdentifierOfType(fromLpi.getPersonIdentifierList(), PersonIdentifier.Type.nupi);
-            PersonIdentifier mpiNupi = getIdentifierOfType(fromMpi.getPersonIdentifierList(), PersonIdentifier.Type.nupi);
-            mpiNupi.setIdentifier(lpiNupi.getIdentifier());//this really should work the other way round, once the technology to support it is built.
         }
         copyPropertiesFromUiToIndex(fromUi, fromLpi);
         copyPropertiesFromUiToIndex(fromUi, fromMpi);
         registryHelper = new RegistryHelper();
         org.openmrs.Person fromOmrs = null;
         org.openmrs.Person mergedPerson;
-        if (!"".equals(personUuid)) {
-            fromOmrs = personService.getPersonByUuid(personUuid);
+        if (!"".equals(lpiNupi)) {
+            fromOmrs = personService.getPersonByUuid(lpiNupi);
         }
         mergedPerson = mergePerson(fromOmrs, fromLpi);
         patient = (Patient) mergedPerson;
         patient = patientService.savePatient(patient);
-        {
-            personUuid = patient.getUuid();
-            PersonIdentifier nupi = new PersonIdentifier();
-            nupi.setIdentifierType(PersonIdentifier.Type.nupi);
-            nupi.setIdentifier(personUuid);
-            PersonIdentifier lpiNupi = getIdentifierOfType(fromLpi.getPersonIdentifierList(), PersonIdentifier.Type.nupi);
-            PersonIdentifier mpiNupi = getIdentifierOfType(fromMpi.getPersonIdentifierList(), PersonIdentifier.Type.nupi);
-            if (lpiNupi == nupi) {
-                fromLpi.getPersonIdentifierList().add(nupi);
-            } else {
-                lpiNupi.setIdentifier(nupi.getIdentifier());
-            }
-            if (mpiNupi == nupi) {
-                fromMpi.getPersonIdentifierList().add(nupi);
-            } else {
-                mpiNupi.setIdentifier(nupi.getIdentifier());
-            }
-        }
         //Person convertedPatient = OpenmrsPersonToOecPersonConverter.convert(patient);
         PersonWrapper lpiUpdatePersonWrapper = new PersonWrapper(fromLpi);
         PersonWrapper mpiUpdatePersonWrapper = new PersonWrapper(fromMpi);
@@ -223,7 +225,6 @@ public class RegistryServiceImpl extends BaseOpenmrsService implements RegistryS
     private org.openmrs.Person mergePerson(org.openmrs.Person fromOmrs, Person fromUi) {
         if (fromOmrs == null) {
             fromOmrs = new org.openmrs.Person();
-            fromOmrs.setUuid(fromUi.getPersonGuid());
         }
         org.openmrs.Person person = mergeService.mergePerson(fromOmrs, fromUi);
         Patient patient;

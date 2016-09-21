@@ -100,6 +100,7 @@ jq(function () {
             for (var i = 0; i < list.data.length; i++) {
                 showPerson(i, src);
             }
+            jq("#reject-button").html("Reject");
             showDetails(0, src);
         }
     }

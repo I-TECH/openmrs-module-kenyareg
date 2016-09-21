@@ -8,6 +8,7 @@ import org.go2itech.oecui.data.RequestResult;
 import org.openmrs.Patient;
 import org.openmrs.module.kenyareg.api.PersonMergeService;
 import org.openmrs.module.kenyareg.api.RegistryService;
+import org.openmrs.module.kenyareg.helper.PersonPropertiesDiffUtil;
 import org.openmrs.ui.framework.SimpleObject;
 import org.openmrs.ui.framework.UiUtils;
 import org.openmrs.ui.framework.annotation.BindParams;
@@ -62,10 +63,10 @@ public class PersonEditorFragmentController {
         session.setAttribute("mpiMatch", fromMpi);
         model.addAttribute("lpiUid", fromLpi != null ? fromLpi.getPersonGuid() : "");
         model.addAttribute("mpiUid", fromMpi != null ? fromMpi.getPersonGuid() : null);
-        model.addAttribute("mergedIdentifiers", mergeService.getLpiMpiMergedIdentifiers(fromLpi, fromMpi));
-        model.addAttribute("conflictingIdentifiers", mergeService.getConflictingIdentifiers(fromLpi, fromMpi));
-        model.addAttribute("mergedProperties", mergeService.getLpiMpiMergedProperties(fromLpi, fromMpi));
-        model.addAttribute("conflictedProperties", mergeService.getLpiMpiConflictingProperties(fromLpi, fromMpi));
+        model.addAttribute("mergedIdentifiers", PersonPropertiesDiffUtil.getMatchingIdentifiers(fromLpi, fromMpi));
+        model.addAttribute("conflictingIdentifiers", PersonPropertiesDiffUtil.getConflictingIdentifiers(fromLpi, fromMpi));
+        model.addAttribute("mergedProperties", PersonPropertiesDiffUtil.getMatchingProperties(fromLpi, fromMpi));
+        model.addAttribute("conflictedProperties", PersonPropertiesDiffUtil.getConflictingProperties(fromLpi, fromMpi));
 
     }
 
@@ -110,7 +111,7 @@ public class PersonEditorFragmentController {
 
     private void validateConflictingPersonIdentifiers(PersonMergeService mergeService, FragmentActionRequest request,
                                                       Person lpiMatch, Person mpiMatch) {
-        Map<String, Map<String, String>> conflictingIdentifiers = mergeService.getConflictingIdentifiers(lpiMatch, mpiMatch);
+        Map<String, Map<String, String>> conflictingIdentifiers = PersonPropertiesDiffUtil.getConflictingIdentifiers(lpiMatch, mpiMatch);
         for (Map.Entry<String, Map<String, String>> conflictingPairEntry : conflictingIdentifiers.entrySet()) {
             String identifierType = conflictingPairEntry.getKey();
             boolean found = true;
@@ -127,7 +128,7 @@ public class PersonEditorFragmentController {
 
     private void validateConflictingPersonProperty(PersonMergeService mergeService, FragmentActionRequest request,
                                                    Person lpiMatch, Person mpiMatch) {
-        Map<String, Map<String, Object>> conflictingProperties = mergeService.getLpiMpiConflictingProperties(lpiMatch, mpiMatch);
+        Map<String, Map<String, Object>> conflictingProperties = PersonPropertiesDiffUtil.getConflictingProperties(lpiMatch, mpiMatch);
         for (Map.Entry<String, Map<String, Object>> entry : conflictingProperties.entrySet()) {
             String propertyName = entry.getKey();
             boolean found = true;
